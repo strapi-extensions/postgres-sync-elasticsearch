@@ -1,0 +1,123 @@
+services:
+  postgresql:
+    image: docker.io/bitnami/postgresql:16
+    container_name: postgresql
+    ports:
+      - '5432:5432'
+    volumes:
+      - 'postgresql_data:/bitnami/postgresql'
+      - './postgres:/opt/bitnami/postgresql/conf/conf.d'
+    environment:
+      - POSTGRESQL_POSTGRES_PASSWORD=admin123abc    
+      - POSTGRESQL_USERNAME=pg-connector
+      - POSTGRESQL_PASSWORD=pg123abc
+      - POSTGRESQL_DATABASE=demo
+    networks:
+      - infra
+
+  kafka:
+    image: docker.io/bitnami/kafka:3.6
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    volumes:
+      - "kafka_data:/bitnami"
+    environment:
+      # KRaft settings
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      # Listeners
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+    networks:
+      - infra
+  kafka-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: kafka-console
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_BROKERS=kafka:9092
+    depends_on:
+      - kafka      
+    networks:
+      - infra      
+
+  elasticsearch:
+    image: docker.io/bitnami/elasticsearch:8
+    container_name: elasticsearch
+    ports:
+      - '9200:9200'
+      - '9300:9300'
+    volumes:
+      - 'elasticsearch_data:/bitnami/elasticsearch/data'
+    networks:
+      - infra
+
+  pg-connect:
+    image: quay.io/debezium/connect:latest
+    container_name: pg-connect    
+    ports:
+      - '8082:8083'
+    environment:
+      BOOTSTRAP_SERVERS: "kafka:9092"
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: pg-connect_configs
+      STATUS_STORAGE_TOPIC: pg-connect_statuses
+      OFFSET_STORAGE_TOPIC: pg-connect_offsets
+    depends_on:
+      - kafka
+      - postgresql
+    networks:
+      - infra
+
+  es-connect:
+    build:
+      dockerfile: ./Dockerfile
+      context: ./confluentinc
+      network: host
+    image: confluentinc-es-connect:latest
+    container_name: es-connect
+    ports:
+      - '8084:8083'
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka:9092"
+      CONNECT_REST_PORT: "8083"
+      CONNECT_GROUP_ID: es-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: es-connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: es-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: es-connect-status
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_REST_ADVERTISED_HOST_NAME: "kafka-connect"
+      CONNECT_LOG4J_ROOT_LOGLEVEL: "INFO"
+      CONNECT_LOG4J_LOGGERS: "org.apache.kafka.connect.runtime.rest=WARN,org.reflections=ERROR"
+      CONNECT_LOG4J_APPENDER_STDOUT_LAYOUT_CONVERSIONPATTERN: "[%d] %p %X{connector.context}%m (%c:%L)%n"
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      CONNECT_PLUGIN_PATH: '/usr/share/java,/connectors,/usr/share/confluent-hub-components/'
+    depends_on:
+      - kafka
+      - elasticsearch
+    networks:
+      - infra
+
+volumes:
+  elasticsearch_data:
+    driver: local
+  postgresql_data:
+    driver: local
+  kafka_data:
+    driver: local
+
+networks:
+  infra:
+    name: infra
+    driver: bridge        

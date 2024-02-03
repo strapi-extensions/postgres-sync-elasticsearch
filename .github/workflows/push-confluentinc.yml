@@ -34,7 +34,7 @@ jobs:
     - name: Build and push container image to registry
       uses: docker/build-push-action@v2
       with:
-        context: "./debezium-pg-to-es"
+        context: "./confluentinc"
         push: true
-        tags: ${{vars.REGISTRY_HOST}}/${{ secrets.REGISTRY_USERNAME }}/${{vars.IMAGE_NAME}}:${{ env.branch }}-${{github.run_number}}-${{ env.sha_short }}
-        file: ${{vars.DOCKERFILE_PATH}}
+        tags: ${{vars.REGISTRY_HOST}}/${{ secrets.REGISTRY_USERNAME }}/confluentinc-sink-es:${{ env.branch }}-${{github.run_number}}-${{ env.sha_short }}
+        file: ./confluentinc/Dockerfile
